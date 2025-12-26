@@ -1,0 +1,1070 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>修仙大世界 - 挂机RPG</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: "SimHei", "Microsoft YaHei", sans-serif;
+        }
+        body {
+            background: #0f172a;
+            color: #e2e8f0;
+            padding: 20px;
+            display: grid;
+            grid-template-columns: 320px 1fr 280px;
+            gap: 20px;
+            max-width: 1400px;
+            margin: 0 auto;
+            min-height: 100vh;
+        }
+        .panel {
+            background: #1e293b;
+            border-radius: 10px;
+            padding: 20px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+        }
+        .title {
+            font-size: 20px;
+            font-weight: bold;
+            margin-bottom: 15px;
+            color: #fbbf24;
+            border-bottom: 2px solid #334155;
+            padding-bottom: 8px;
+        }
+        .sub-title {
+            font-size: 16px;
+            color: #94a3b8;
+            margin: 10px 0 5px;
+        }
+        .attr-item {
+            margin: 8px 0;
+            font-size: 14px;
+            display: flex;
+            justify-content: space-between;
+        }
+        .attr-label {
+            color: #94a3b8;
+        }
+        .btn {
+            display: block;
+            width: 100%;
+            padding: 10px 0;
+            margin: 6px 0;
+            background: #2563eb;
+            color: #fff;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.2s;
+        }
+        .btn:hover {
+            background: #3b82f6;
+            transform: translateY(-1px);
+        }
+        .btn:active {
+            transform: translateY(0);
+        }
+        .btn-red { background: #dc2626; }
+        .btn-red:hover { background: #ef4444; }
+        .btn-green { background: #059669; }
+        .btn-green:hover { background: #10b981; }
+        .btn-gray { background: #475569; }
+        .btn-gray:hover { background: #64748b; }
+        .btn-purple { background: #7c3aed; }
+        .btn-purple:hover { background: #8b5cf6; }
+        .btn-yellow { background: #d97706; }
+        .btn-yellow:hover { background: #f59e0b; }
+        .btn-disabled {
+            background: #334155;
+            cursor: not-allowed;
+            opacity: 0.7;
+        }
+        .btn-disabled:hover {
+            background: #334155;
+            transform: none;
+        }
+
+        /* 大地图样式 */
+        .map-area {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 10px;
+            margin: 10px 0;
+        }
+        .map-node {
+            background: #334155;
+            border-radius: 8px;
+            padding: 15px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .map-node:hover {
+            background: #475569;
+        }
+        .map-node.active {
+            background: #2563eb;
+            border: 2px solid #fbbf24;
+        }
+        .map-node .level {
+            font-size: 12px;
+            color: #94a3b8;
+            margin-top: 5px;
+        }
+
+        /* 战斗区域 */
+        .battle-area {
+            text-align: center;
+            padding: 20px;
+        }
+        .monster-info {
+            color: #ef4444;
+            margin: 15px 0;
+            font-size: 18px;
+        }
+        .monster-hp {
+            height: 20px;
+            background: #475569;
+            border-radius: 10px;
+            margin: 10px 0;
+            overflow: hidden;
+        }
+        .monster-hp-bar {
+            height: 100%;
+            background: #ef4444;
+            width: 100%;
+            transition: width 0.3s;
+        }
+
+        /* 日志/背包/锻造区域 */
+        .log-area {
+            height: 250px;
+            overflow-y: auto;
+            background: #0f172a;
+            padding: 10px;
+            border-radius: 6px;
+            font-size: 13px;
+            line-height: 1.6;
+            margin-top: 10px;
+        }
+        .log-item {
+            margin: 3px 0;
+        }
+        .bag-area, .forging-area, .skill-area, .pill-area {
+            max-height: 220px;
+            overflow-y: auto;
+            margin-top: 10px;
+        }
+        .item-card {
+            background: #334155;
+            border-radius: 6px;
+            padding: 10px;
+            margin: 5px 0;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .item-card:hover {
+            background: #475569;
+        }
+        .item-card .item-name {
+            font-weight: bold;
+            color: #fbbf24;
+        }
+        .item-card .item-desc {
+            font-size: 12px;
+            color: #94a3b8;
+            margin-top: 3px;
+        }
+
+        /* 倒计时样式 */
+        .countdown {
+            color: #ef4444;
+            font-weight: bold;
+            margin: 10px 0;
+        }
+
+        /* 响应式 */
+        @media (max-width: 1000px) {
+            body {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- 左侧：角色信息 + 背包 + 丹药 + 功法 -->
+    <div class="left-panel">
+        <!-- 角色核心信息 -->
+        <div class="panel">
+            <div class="title">角色信息</div>
+            <div class="attr-item">
+                <span class="attr-label">境界：</span>
+                <span id="cultivation">炼气期</span>
+            </div>
+            <div class="attr-item">
+                <span class="attr-label">等级：</span>
+                <span id="level">1</span>
+            </div>
+            <div class="attr-item">
+                <span class="attr-label">攻击：</span>
+                <span id="atk">10</span>（基础<span id="baseAtk">10</span>）
+            </div>
+            <div class="attr-item">
+                <span class="attr-label">生命：</span>
+                <span id="hp">100</span>/<span id="maxHp">100</span>
+            </div>
+            <div class="attr-item">
+                <span class="attr-label">经验：</span>
+                <span id="exp">0</span>/<span id="expNeeded">100</span>
+            </div>
+            <div class="attr-item">
+                <span class="attr-label">灵石：</span>
+                <span id="gold">0</span>
+            </div>
+            <div class="attr-item">
+                <span class="attr-label">门派：</span>
+                <span id="sect">未加入</span>
+            </div>
+            <div class="attr-item">
+                <span class="attr-label">挂机状态：</span>
+                <span id="afkState" style="color: #94a3b8;">关闭</span>
+            </div>
+        </div>
+
+        <!-- 已装备 -->
+        <div class="panel" style="margin-top: 20px;">
+            <div class="title">已装备</div>
+            <div class="attr-item">
+                <span class="attr-label">武器：</span>
+                <span id="equipWeapon">无</span>
+            </div>
+            <div class="attr-item">
+                <span class="attr-label">防具：</span>
+                <span id="equipArmor">无</span>
+            </div>
+            <div class="attr-item">
+                <span class="attr-label">饰品：</span>
+                <span id="equipAccessory">无</span>
+            </div>
+        </div>
+
+        <!-- 背包 -->
+        <div class="panel" style="margin-top: 20px;">
+            <div class="title">背包（点击穿戴/使用）</div>
+            <div class="bag-area" id="bagArea">
+                <div class="attr-item" style="text-align: center;">暂无物品</div>
+            </div>
+        </div>
+
+        <!-- 丹药 -->
+        <div class="panel" style="margin-top: 20px;">
+            <div class="title">丹药</div>
+            <div class="pill-area" id="pillArea">
+                <div class="item-card" onclick="usePill('hp')">
+                    <div class="item-name">回血丹</div>
+                    <div class="item-desc">恢复50点生命 | 数量：<span id="pillHpCount">0</span></div>
+                </div>
+                <div class="item-card" onclick="usePill('atk')">
+                    <div class="item-name">攻击丹</div>
+                    <div class="item-desc">5分钟内攻击+20 | 数量：<span id="pillAtkCount">0</span></div>
+                </div>
+                <div class="item-card" onclick="usePill('gain')">
+                    <div class="item-name">收益丹</div>
+                    <div class="item-desc">10分钟内挂机收益+50% | 数量：<span id="pillGainCount">0</span></div>
+                </div>
+            </div>
+            <button class="btn btn-yellow" style="margin-top: 10px;" onclick="makePill()">炼制丹药（20灵石/个）</button>
+        </div>
+
+        <!-- 功法 -->
+        <div class="panel" style="margin-top: 20px;">
+            <div class="title">功法（点击学习/升级）</div>
+            <div class="skill-area" id="skillArea">
+                <div class="item-card" onclick="learnSkill('basic')">
+                    <div class="item-name">基础心法</div>
+                    <div class="item-desc">攻击+5 | 等级：<span id="skillBasicLvl">0</span> | 升级：100灵石</div>
+                </div>
+                <div class="item-card" onclick="learnSkill('sect')" style="display: none;" id="sectSkillCard">
+                    <div class="item-name" id="sectSkillName">青云剑诀</div>
+                    <div class="item-desc" id="sectSkillDesc">门派专属技能 | 等级：<span id="skillSectLvl">0</span> | 升级：500灵石</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 中间：大地图 + 战斗 + 日志 -->
+    <div class="middle-panel">
+        <!-- 大地图 -->
+        <div class="panel">
+            <div class="title">大地图</div>
+            <div class="map-area">
+                <div class="map-node active" onclick="changeMap('novice')">
+                    <div>新手村</div>
+                    <div class="level">适合等级1-5</div>
+                </div>
+                <div class="map-node" onclick="changeMap('qingyun')">
+                    <div>青云山</div>
+                    <div class="level">适合等级6-10</div>
+                </div>
+                <div class="map-node" onclick="changeMap('heifeng')">
+                    <div>黑风岭</div>
+                    <div class="level">适合等级11-20</div>
+                </div>
+                <div class="map-node" onclick="changeMap('boss')">
+                    <div>BOSS秘境</div>
+                    <div class="level">限时BOSS | 每日1次</div>
+                </div>
+            </div>
+            <div class="sub-title">当前地图：<span id="currentMap">新手村</span></div>
+            <div class="sub-title">当前怪物：<span id="currentMonster">野狼妖</span></div>
+            
+            <!-- 挂机控制 -->
+            <div style="margin-top: 15px;">
+                <button class="btn" onclick="toggleAfk()">
+                    <span id="afkBtnText">开启挂机</span>
+                </button>
+                <button class="btn btn-green" onclick="claimAfkReward()">领取挂机收益</button>
+                <div class="attr-item" style="margin-top: 10px;">
+                    <span class="attr-label">挂机累计：</span>
+                    <span id="afkGain">经验+0 灵石+0</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- 战斗区域 -->
+        <div class="panel battle-area" style="margin-top: 20px;">
+            <div class="title">战斗区域</div>
+            <div id="battleTip">无战斗中，点击「开始战斗」或开启挂机</div>
+            <div class="monster-info" id="monsterInfo"></div>
+            <div class="monster-hp" id="monsterHpBar" style="display: none;">
+                <div class="monster-hp-bar" id="monsterHpProgress"></div>
+            </div>
+            <button class="btn btn-red" id="attackBtn" style="display: none;" onclick="attackMonster()">普通攻击</button>
+            <button class="btn btn-purple" id="skillBtn" style="display: none;" onclick="useSkill()">门派技能</button>
+            <button class="btn btn-gray" id="startBattleBtn" onclick="startBattle()">开始战斗</button>
+            
+            <!-- BOSS倒计时 -->
+            <div class="countdown" id="bossCountdown" style="display: none;">
+                下次BOSS挑战时间：<span id="bossCD">00:00:00</span>
+            </div>
+        </div>
+
+        <!-- 战斗日志 -->
+        <div class="panel" style="margin-top: 20px;">
+            <div class="title">战斗日志</div>
+            <div class="log-area" id="logArea"></div>
+        </div>
+    </div>
+
+    <!-- 右侧：门派选择 + 锻造 + 强化 -->
+    <div class="right-panel">
+        <!-- 门派选择 -->
+        <div class="panel">
+            <div class="title">门派选择（等级≥3解锁）</div>
+            <button class="btn btn-disabled" id="sectBtn1" onclick="joinSect('青云门')">
+                青云门<br>
+                <small>攻击+20% 技能：神剑御雷真诀</small>
+            </button>
+            <button class="btn btn-disabled" id="sectBtn2" onclick="joinSect('天音寺')">
+                天音寺<br>
+                <small>生命+30% 技能：大梵般若</small>
+            </button>
+            <button class="btn btn-disabled" id="sectBtn3" onclick="joinSect('鬼王宗')">
+                鬼王宗<br>
+                <small>攻击+30%/生命-10% 技能：狂魔心法</small>
+            </button>
+        </div>
+
+        <!-- 装备锻造 -->
+        <div class="panel" style="margin-top: 20px;">
+            <div class="title">装备锻造</div>
+            <div class="forging-area" id="forgingArea">
+                <div class="item-card" onclick="forgeItem('weapon')">
+                    <div class="item-name">锻造武器</div>
+                    <div class="item-desc">需要50灵石 | 基础攻击+10</div>
+                </div>
+                <div class="item-card" onclick="forgeItem('armor')">
+                    <div class="item-name">锻造防具</div>
+                    <div class="item-desc">需要40灵石 | 基础生命+50</div>
+                </div>
+                <div class="item-card" onclick="forgeItem('accessory')">
+                    <div class="item-name">锻造饰品</div>
+                    <div class="item-desc">需要60灵石 | 攻击+5 生命+30</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 装备强化 -->
+        <div class="panel" style="margin-top: 20px;">
+            <div class="title">装备强化（成功率80%）</div>
+            <div id="enhanceTip" class="attr-item">请先选择要强化的装备</div>
+            <div class="forging-area" id="enhanceArea">
+                <!-- 强化装备列表动态生成 -->
+            </div>
+            <button class="btn btn-yellow" style="margin-top: 10px;" onclick="enhanceItem()">强化选中装备</button>
+        </div>
+    </div>
+
+    <script>
+        // 游戏数据（自动本地保存）
+        let gameData = {
+            // 角色基础属性
+            level: 1,
+            cultivation: "炼气期",
+            baseAtk: 10,
+            baseHp: 100,
+            hp: 100,
+            exp: 0,
+            expNeeded: 100,
+            gold: 0,
+            sect: "", // 青云门/天音寺/鬼王宗
+            sectBuff: { atk: 1, hp: 1 },
+            skill: { basic: 0, sect: 0, cd: 0 },
+            pill: { hp: 0, atk: 0, gain: 0, atkExpire: 0, gainExpire: 0 },
+            
+            // 装备系统
+            equip: { weapon: null, armor: null, accessory: null },
+            bag: [],
+            selectedEnhanceItem: null,
+            
+            // 地图/怪物
+            currentMap: "novice",
+            mapConfig: {
+                novice: { name: "新手村", monster: "野狼妖", atk: 5, hp: 30, exp: 10, gold: 5, drop: "weapon_1" },
+                qingyun: { name: "青云山", monster: "猛虎精", atk: 15, hp: 80, exp: 30, gold: 15, drop: "armor_1" },
+                heifeng: { name: "黑风岭", monster: "黑熊精", atk: 30, hp: 200, exp: 80, gold: 40, drop: "accessory_1" },
+                boss: { name: "BOSS秘境", monster: "黑山老妖", atk: 80, hp: 1000, exp: 500, gold: 200, drop: "weapon_2" }
+            },
+            currentMonster: null,
+            inBattle: false,
+            
+            // 挂机系统
+            afk: false,
+            afkStartTime: 0,
+            afkGain: { exp: 0, gold: 0 },
+            
+            // BOSS系统
+            lastBossTime: 0,
+            bossCD: 86400, // 24小时CD（秒）
+            
+            // 装备配置
+            itemConfig: {
+                // 基础装备
+                weapon_1: { name: "铁剑", type: "weapon", atk: 10, hp: 0, level: 1, enhance: 0 },
+                armor_1: { name: "布衣", type: "armor", atk: 0, hp: 50, level: 1, enhance: 0 },
+                accessory_1: { name: "玉佩", type: "accessory", atk: 5, hp: 30, level: 1, enhance: 0 },
+                // BOSS掉落
+                weapon_2: { name: "玄铁剑", type: "weapon", atk: 30, hp: 0, level: 5, enhance: 0 },
+            }
+        };
+
+        // 加载本地保存的数据
+        function loadData() {
+            const saved = localStorage.getItem("xiuxianGameData");
+            if (saved) gameData = JSON.parse(saved);
+            updateUI();
+            checkBossCD();
+            setInterval(saveData, 5000); // 每5秒自动保存
+            setInterval(updateAfk, 1000); // 每秒更新挂机收益
+            setInterval(updateBuff, 1000); // 每秒更新buff
+        }
+
+        // 保存数据到本地
+        function saveData() {
+            localStorage.setItem("xiuxianGameData", JSON.stringify(gameData));
+        }
+
+        // 更新UI
+        function updateUI() {
+            // 计算最终属性（基础+功法+门派+丹药）
+            const finalAtk = Math.floor((gameData.baseAtk + gameData.skill.basic * 5) * gameData.sectBuff.atk * (gameData.pill.atkExpire > Date.now() ? 1.2 : 1) + 
+                (gameData.equip.weapon ? gameData.equip.weapon.atk * (1 + gameData.equip.weapon.enhance * 0.2) : 0) + 
+                (gameData.equip.accessory ? gameData.equip.accessory.atk * (1 + gameData.equip.accessory.enhance * 0.2) : 0));
+            const finalHp = Math.floor((gameData.baseHp) * gameData.sectBuff.hp + 
+                (gameData.equip.armor ? gameData.equip.armor.hp * (1 + gameData.equip.armor.enhance * 0.2) : 0) + 
+                (gameData.equip.accessory ? gameData.equip.accessory.hp * (1 + gameData.equip.accessory.enhance * 0.2) : 0));
+            
+            // 角色信息
+            document.getElementById("level").textContent = gameData.level;
+            document.getElementById("cultivation").textContent = gameData.cultivation;
+            document.getElementById("baseAtk").textContent = gameData.baseAtk;
+            document.getElementById("atk").textContent = finalAtk;
+            document.getElementById("baseHp").textContent = gameData.baseHp;
+            document.getElementById("maxHp").textContent = finalHp;
+            document.getElementById("hp").textContent = Math.min(gameData.hp, finalHp);
+            document.getElementById("exp").textContent = gameData.exp;
+            document.getElementById("expNeeded").textContent = gameData.expNeeded;
+            document.getElementById("gold").textContent = gameData.gold;
+            document.getElementById("sect").textContent = gameData.sect || "未加入";
+            document.getElementById("afkState").textContent = gameData.afk ? "开启" : "关闭";
+            document.getElementById("afkState").style.color = gameData.afk ? "#10b981" : "#94a3b8";
+            document.getElementById("afkGain").textContent = `经验+${gameData.afkGain.exp} 灵石+${gameData.afkGain.gold}`;
+            
+            // 地图/怪物
+            document.getElementById("currentMap").textContent = gameData.mapConfig[gameData.currentMap].name;
+            document.getElementById("currentMonster").textContent = gameData.mapConfig[gameData.currentMap].monster;
+            
+            // 装备
+            document.getElementById("equipWeapon").textContent = gameData.equip.weapon ? 
+                `${gameData.equip.weapon.name}+${gameData.equip.weapon.enhance}` : "无";
+            document.getElementById("equipArmor").textContent = gameData.equip.armor ? 
+                `${gameData.equip.armor.name}+${gameData.equip.armor.enhance}` : "无";
+            document.getElementById("equipAccessory").textContent = gameData.equip.accessory ? 
+                `${gameData.equip.accessory.name}+${gameData.equip.accessory.enhance}` : "无";
+            
+            // 丹药
+            document.getElementById("pillHpCount").textContent = gameData.pill.hp;
+            document.getElementById("pillAtkCount").textContent = gameData.pill.atk;
+            document.getElementById("pillGainCount").textContent = gameData.pill.gain;
+            
+            // 功法
+            document.getElementById("skillBasicLvl").textContent = gameData.skill.basic;
+            if (gameData.sect) {
+                document.getElementById("sectSkillCard").style.display = "block";
+                const skillNames = {
+                    青云门: "青云剑诀",
+                    天音寺: "大梵般若",
+                    鬼王宗: "狂魔心法"
+                };
+                const skillDescs = {
+                    青云门: "攻击+10 | 等级：",
+                    天音寺: "生命+20 | 等级：",
+                    鬼王宗: "攻击+15/生命-5 | 等级："
+                };
+                document.getElementById("sectSkillName").textContent = skillNames[gameData.sect];
+                document.getElementById("sectSkillDesc").innerHTML = `${skillDescs[gameData.sect]}<span id="skillSectLvl">${gameData.skill.sect}</span> | 升级：500灵石`;
+                document.getElementById("skillSectLvl").textContent = gameData.skill.sect;
+            } else {
+                document.getElementById("sectSkillCard").style.display = "none";
+            }
+            
+            // 门派按钮解锁
+            const sectBtns = [document.getElementById("sectBtn1"), document.getElementById("sectBtn2"), document.getElementById("sectBtn3")];
+            sectBtns.forEach(btn => {
+                btn.disabled = gameData.level < 3 || gameData.sect;
+                btn.classList.toggle("btn-disabled", gameData.level < 3 || gameData.sect);
+            });
+            
+            // 背包
+            updateBag();
+            
+            // 强化列表
+            updateEnhanceList();
+            
+            // 战斗区域
+            updateBattleUI();
+            
+            // 日志（保持最新）
+            updateLog("欢迎来到修仙大世界！开始你的修仙之旅吧～");
+        }
+
+        // 更新背包UI
+        function updateBag() {
+            const bagArea = document.getElementById("bagArea");
+            if (gameData.bag.length === 0) {
+                bagArea.innerHTML = '<div class="attr-item" style="text-align: center;">暂无物品</div>';
+                return;
+            }
+            
+            bagArea.innerHTML = "";
+            gameData.bag.forEach((item, index) => {
+                const itemCard = document.createElement("div");
+                itemCard.className = "item-card";
+                itemCard.onclick = () => equipItem(index);
+                itemCard.innerHTML = `
+                    <div class="item-name">${item.name}+${item.enhance}</div>
+                    <div class="item-desc">${item.atk > 0 ? `攻击+${item.atk * (1 + item.enhance * 0.2)}` : ""} ${item.hp > 0 ? `生命+${item.hp * (1 + item.enhance * 0.2)}` : ""} | 等级${item.level}</div>
+                `;
+                bagArea.appendChild(itemCard);
+            });
+        }
+
+        // 更新强化列表
+        function updateEnhanceList() {
+            const enhanceArea = document.getElementById("enhanceArea");
+            const equipList = [gameData.equip.weapon, gameData.equip.armor, gameData.equip.accessory].filter(Boolean);
+            
+            if (equipList.length === 0) {
+                enhanceArea.innerHTML = '<div class="attr-item" style="text-align: center;">暂无可强化装备</div>';
+                document.getElementById("enhanceTip").textContent = "请先装备物品";
+                return;
+            }
+            
+            enhanceArea.innerHTML = "";
+            equipList.forEach((item, index) => {
+                const itemCard = document.createElement("div");
+                itemCard.className = "item-card";
+                itemCard.style.background = gameData.selectedEnhanceItem === item ? "#2563eb" : "#334155";
+                itemCard.onclick = () => {
+                    gameData.selectedEnhanceItem = item;
+                    document.getElementById("enhanceTip").textContent = `选中：${item.name}+${item.enhance}`;
+                    updateEnhanceList();
+                };
+                itemCard.innerHTML = `
+                    <div class="item-name">${item.name}+${item.enhance}</div>
+                    <div class="item-desc">强化后属性+20% | 消耗${50 * (item.enhance + 1)}灵石</div>
+                `;
+                enhanceArea.appendChild(itemCard);
+            });
+        }
+
+        // 更新战斗UI
+        function updateBattleUI() {
+            const battleTip = document.getElementById("battleTip");
+            const monsterInfo = document.getElementById("monsterInfo");
+            const monsterHpBar = document.getElementById("monsterHpBar");
+            const monsterHpProgress = document.getElementById("monsterHpProgress");
+            const attackBtn = document.getElementById("attackBtn");
+            const skillBtn = document.getElementById("skillBtn");
+            const startBattleBtn = document.getElementById("startBattleBtn");
+            
+            if (gameData.inBattle && gameData.currentMonster) {
+                battleTip.style.display = "none";
+                monsterInfo.style.display = "block";
+                monsterHpBar.style.display = "block";
+                attackBtn.style.display = "block";
+                skillBtn.style.display = gameData.sect && gameData.skill.cd <= 0 ? "block" : "none";
+                startBattleBtn.style.display = "none";
+                
+                monsterInfo.textContent = `正在挑战：${gameData.currentMonster.name}`;
+                const hpPercent = (gameData.currentMonster.hp / gameData.currentMonster.maxHp) * 100;
+                monsterHpProgress.style.width = `${hpPercent}%`;
+            } else {
+                battleTip.style.display = "block";
+                monsterInfo.style.display = "none";
+                monsterHpBar.style.display = "none";
+                attackBtn.style.display = "none";
+                skillBtn.style.display = "none";
+                startBattleBtn.style.display = "block";
+            }
+        }
+
+        // 更新日志
+        function updateLog(msg) {
+            const logArea = document.getElementById("logArea");
+            const logItem = document.createElement("div");
+            logItem.className = "log-item";
+            logItem.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
+            logArea.appendChild(logItem);
+            logArea.scrollTop = logArea.scrollHeight;
+        }
+
+        // 升级逻辑
+        function levelUp() {
+            while (gameData.exp >= gameData.expNeeded) {
+                gameData.exp -= gameData.expNeeded;
+                gameData.level += 1;
+                gameData.baseAtk += 5;
+                gameData.baseHp += 20;
+                gameData.hp = gameData.baseHp * gameData.sectBuff.hp;
+                gameData.expNeeded = Math.floor(gameData.expNeeded * 1.5);
+                
+                // 境界提升
+                const realms = ["炼气期", "筑基期", "金丹期", "元婴期", "化神期"];
+                const realmIndex = Math.min(Math.floor(gameData.level / 10), realms.length - 1);
+                gameData.cultivation = realms[realmIndex];
+                
+                updateLog(`恭喜！突破至${gameData.cultivation}，等级${gameData.level}！`);
+                updateUI();
+            }
+        }
+
+        // 切换地图
+        function changeMap(mapKey) {
+            if (mapKey === "boss") {
+                const now = Date.now() / 1000;
+                if (now - gameData.lastBossTime < gameData.bossCD && gameData.lastBossTime > 0) {
+                    updateLog("BOSS挑战次数已用完！请等待CD结束");
+                    return;
+                }
+                gameData.lastBossTime = now;
+                saveData();
+            }
+            
+            gameData.currentMap = mapKey;
+            document.querySelectorAll(".map-node").forEach(node => node.classList.remove("active"));
+            event.target.classList.add("active");
+            updateUI();
+            updateLog(`进入${gameData.mapConfig[mapKey].name}！`);
+        }
+
+        // 开始战斗
+        function startBattle() {
+            const mapCfg = gameData.mapConfig[gameData.currentMap];
+            gameData.currentMonster = {
+                name: mapCfg.monster,
+                atk: mapCfg.atk,
+                hp: mapCfg.hp,
+                maxHp: mapCfg.hp,
+                exp: mapCfg.exp,
+                gold: mapCfg.gold,
+                drop: mapCfg.drop
+            };
+            gameData.inBattle = true;
+            updateUI();
+            updateLog(`开始挑战${mapCfg.monster}！`);
+        }
+
+        // 普通攻击
+        function attackMonster() {
+            if (!gameData.inBattle || !gameData.currentMonster) return;
+            
+            // 计算最终攻击
+            const finalAtk = Math.floor((gameData.baseAtk + gameData.skill.basic * 5) * gameData.sectBuff.atk * (gameData.pill.atkExpire > Date.now() ? 1.2 : 1) + 
+                (gameData.equip.weapon ? gameData.equip.weapon.atk * (1 + gameData.equip.weapon.enhance * 0.2) : 0) + 
+                (gameData.equip.accessory ? gameData.equip.accessory.atk * (1 + gameData.equip.accessory.enhance * 0.2) : 0));
+            
+            // 角色攻击
+            const damage = Math.floor(Math.random() * finalAtk/2 + finalAtk/2);
+            gameData.currentMonster.hp = Math.max(0, gameData.currentMonster.hp - damage);
+            updateLog(`你对${gameData.currentMonster.name}造成${damage}点伤害！`);
+            
+            // 怪物死亡
+            if (gameData.currentMonster.hp <= 0) {
+                updateLog(`击败${gameData.currentMonster.name}！获得经验+${gameData.currentMonster.exp} 灵石+${gameData.currentMonster.gold}`);
+                gameData.exp += gameData.currentMonster.exp;
+                gameData.gold += gameData.currentMonster.gold;
+                
+                // 掉落装备
+                const dropItem = JSON.parse(JSON.stringify(gameData.itemConfig[gameData.currentMonster.drop]));
+                gameData.bag.push(dropItem);
+                updateLog(`获得掉落物：${dropItem.name}`);
+                
+                // 升级
+                levelUp();
+                
+                // 结束战斗
+                gameData.inBattle = false;
+                gameData.currentMonster = null;
+                updateUI();
+                return;
+            }
+            
+            // 怪物反击
+            const monsterDamage = Math.max(0, gameData.currentMonster.atk - finalAtk / 5);
+            gameData.hp = Math.max(0, gameData.hp - monsterDamage);
+            updateLog(`${gameData.currentMonster.name}对你造成${monsterDamage}点伤害！`);
+            
+            // 角色死亡
+            if (gameData.hp <= 0) {
+                updateLog("你被击败了！损失10灵石，回满生命继续修炼...");
+                gameData.hp = gameData.baseHp * gameData.sectBuff.hp;
+                gameData.gold = Math.max(0, gameData.gold - 10);
+                gameData.inBattle = false;
+                gameData.currentMonster = null;
+            }
+            
+            // 更新技能CD
+            if (gameData.skill.cd > 0) gameData.skill.cd--;
+            updateUI();
+        }
+
+        // 使用门派技能
+        function useSkill() {
+            if (!gameData.sect || gameData.skill.cd > 0 || !gameData.inBattle) return;
+            
+            // 技能效果
+            const skillEffects = {
+                青云门: { damage: 2, heal: 0 },
+                天音寺: { damage: 1.8, heal: 0.1 },
+                鬼王宗: { damage: 2.5, selfDmg: 0.05 }
+            };
+            const effect = skillEffects[gameData.sect];
+            
+            const finalAtk = Math.floor((gameData.baseAtk + gameData.skill.basic * 5 + gameData.skill.sect * 10) * gameData.sectBuff.atk);
+            const damage = Math.floor(finalAtk * effect.damage);
+            gameData.currentMonster.hp = Math.max(0, gameData.currentMonster.hp - damage);
+            
+            updateLog(`释放${gameData.sect === "青云门" ? "神剑御雷真诀" : gameData.sect === "天音寺" ? "大梵般若" : "狂魔心法"}！造成${damage}点伤害！`);
+            
+            // 特殊效果
+            if (effect.heal) {
+                const heal = Math.floor(gameData.baseHp * effect.heal);
+                gameData.hp = Math.min(gameData.hp + heal, gameData.baseHp * gameData.sectBuff.hp);
+                updateLog(`回血${heal}点！`);
+            }
+            if (effect.selfDmg) {
+                const selfDmg = Math.floor(gameData.baseHp * effect.selfDmg);
+                gameData.hp = Math.max(0, gameData.hp - selfDmg);
+                updateLog(`自身损耗${selfDmg}点生命！`);
+            }
+            
+            // 怪物死亡
+            if (gameData.currentMonster.hp <= 0) {
+                updateLog(`击败${gameData.currentMonster.name}！获得经验+${gameData.currentMonster.exp} 灵石+${gameData.currentMonster.gold}`);
+                gameData.exp += gameData.currentMonster.exp;
+                gameData.gold += gameData.currentMonster.gold;
+                
+                const dropItem = JSON.parse(JSON.stringify(gameData.itemConfig[gameData.currentMonster.drop]));
+                gameData.bag.push(dropItem);
+                updateLog(`获得掉落物：${dropItem.name}`);
+                
+                levelUp();
+                gameData.inBattle = false;
+                gameData.currentMonster = null;
+            } else {
+                // 怪物反击
+                const monsterDamage = Math.max(0, gameData.currentMonster.atk - finalAtk / 5);
+                gameData.hp = Math.max(0, gameData.hp - monsterDamage);
+                updateLog(`${gameData.currentMonster.name}对你造成${monsterDamage}点伤害！`);
+                
+                if (gameData.hp <= 0) {
+                    updateLog("你被击败了！损失10灵石，回满生命继续修炼...");
+                    gameData.hp = gameData.baseHp * gameData.sectBuff.hp;
+                    gameData.gold = Math.max(0, gameData.gold - 10);
+                    gameData.inBattle = false;
+                    gameData.currentMonster = null;
+                }
+            }
+            
+            // 技能CD（5秒）
+            gameData.skill.cd = 5;
+            updateUI();
+        }
+
+        // 加入门派
+        function joinSect(sectName) {
+            if (gameData.sect || gameData.level < 3) return;
+            
+            gameData.sect = sectName;
+            const sectBuffs = {
+                青云门: { atk: 1.2, hp: 1 },
+                天音寺: { atk: 1, hp: 1.3 },
+                鬼王宗: { atk: 1.3, hp: 0.9 }
+            };
+            gameData.sectBuff = sectBuffs[sectName];
+            gameData.hp = gameData.baseHp * gameData.sectBuff.hp;
+            
+            updateLog(`成功加入${sectName}！${sectName === "青云门" ? "攻击+20%" : sectName === "天音寺" ? "生命+30%" : "攻击+30%/生命-10%"}`);
+            updateUI();
+        }
+
+        // 学习/升级功法
+        function learnSkill(skillType) {
+            if (skillType === "basic") {
+                const cost = 100 * (gameData.skill.basic + 1);
+                if (gameData.gold < cost) {
+                    updateLog("灵石不足！无法升级基础心法");
+                    return;
+                }
+                gameData.gold -= cost;
+                gameData.skill.basic += 1;
+                updateLog(`基础心法升级至${gameData.skill.basic}级！攻击+5`);
+            } else if (skillType === "sect" && gameData.sect) {
+                const cost = 500 * (gameData.skill.sect + 1);
+                if (gameData.gold < cost) {
+                    updateLog("灵石不足！无法升级门派功法");
+                    return;
+                }
+                gameData.gold -= cost;
+                gameData.skill.sect += 1;
+                updateLog(`${gameData.sect}功法升级至${gameData.skill.sect}级！`);
+            }
+            updateUI();
+        }
+
+        // 装备物品
+        function equipItem(index) {
+            if (index < 0 || index >= gameData.bag.length) return;
+            
+            const item = gameData.bag[index];
+            if (gameData.level < item.level) {
+                updateLog(`等级不足${item.level}，无法装备！`);
+                return;
+            }
+            
+            // 卸下原有装备
+            const oldItem = gameData.equip[item.type];
+            if (oldItem) {
+                gameData.bag.push(oldItem);
+            }
+            
+            // 装备新物品
+            gameData.equip[item.type] = item;
+            gameData.bag.splice(index, 1);
+            gameData.hp = Math.floor(gameData.baseHp * gameData.sectBuff.hp + 
+                (gameData.equip.armor ? gameData.equip.armor.hp * (1 + gameData.equip.armor.enhance * 0.2) : 0) + 
+                (gameData.equip.accessory ? gameData.equip.accessory.hp * (1 + gameData.equip.accessory.enhance * 0.2) : 0));
+            
+            updateLog(`装备${item.name}成功！`);
+            updateUI();
+        }
+
+        // 炼制丹药
+        function makePill() {
+            if (gameData.gold < 20) {
+                updateLog("灵石不足！炼制丹药需要20灵石");
+                return;
+            }
+            
+            gameData.gold -= 20;
+            const pillType = ["hp", "atk", "gain"][Math.floor(Math.random() * 3)];
+            gameData.pill[pillType] += 1;
+            updateLog(`炼制成功！获得${pillType === "hp" ? "回血丹" : pillType === "atk" ? "攻击丹" : "收益丹"}x1`);
+            updateUI();
+        }
+
+        // 使用丹药
+        function usePill(pillType) {
+            if (gameData.pill[pillType] <= 0) {
+                updateLog("该丹药数量不足！");
+                return;
+            }
+            
+            gameData.pill[pillType] -= 1;
+            if (pillType === "hp") {
+                gameData.hp = Math.min(gameData.hp + 50, gameData.baseHp * gameData.sectBuff.hp);
+                updateLog("使用回血丹！恢复50点生命");
+            } else if (pillType === "atk") {
+                gameData.pill.atkExpire = Date.now() + 5 * 60 * 1000; // 5分钟
+                updateLog("使用攻击丹！5分钟内攻击+20%");
+            } else if (pillType === "gain") {
+                gameData.pill.gainExpire = Date.now() + 10 * 60 * 1000; // 10分钟
+                updateLog("使用收益丹！10分钟内挂机收益+50%");
+            }
+            updateUI();
+        }
+
+        // 锻造装备
+        function forgeItem(itemType) {
+            const costs = { weapon: 50, armor: 40, accessory: 60 };
+            const cost = costs[itemType];
+            
+            if (gameData.gold < cost) {
+                updateLog("灵石不足！无法锻造");
+                return;
+            }
+            
+            gameData.gold -= cost;
+            const itemKeys = { weapon: "weapon_1", armor: "armor_1", accessory: "accessory_1" };
+            const newItem = JSON.parse(JSON.stringify(gameData.itemConfig[itemKeys[itemType]]));
+            gameData.bag.push(newItem);
+            
+            updateLog(`锻造成功！获得${newItem.name}`);
+            updateUI();
+        }
+
+        // 强化装备
+        function enhanceItem() {
+            if (!gameData.selectedEnhanceItem || gameData.gold < 50 * (gameData.selectedEnhanceItem.enhance + 1)) {
+                updateLog("灵石不足或未选择装备！");
+                return;
+            }
+            
+            const cost = 50 * (gameData.selectedEnhanceItem.enhance + 1);
+            gameData.gold -= cost;
+            
+            // 80%成功率
+            if (Math.random() < 0.8) {
+                gameData.selectedEnhanceItem.enhance += 1;
+                updateLog(`强化成功！${gameData.selectedEnhanceItem.name}+${gameData.selectedEnhanceItem.enhance} 属性+20%`);
+            } else {
+                updateLog(`强化失败！损失${cost}灵石`);
+            }
+            
+            updateUI();
+        }
+
+        // 挂机系统
+        function toggleAfk() {
+            gameData.afk = !gameData.afk;
+            if (gameData.afk) {
+                gameData.afkStartTime = Date.now();
+                updateLog("开启自动挂机刷怪！");
+            } else {
+                updateAfk();
+                updateLog(`停止挂机！累计收益：经验+${gameData.afkGain.exp} 灵石+${gameData.afkGain.gold}`);
+            }
+            document.getElementById("afkBtnText").textContent = gameData.afk ? "关闭挂机" : "开启挂机";
+            updateUI();
+        }
+
+        function updateAfk() {
+            if (!gameData.afk) return;
+            
+            const now = Date.now();
+            const duration = (now - gameData.afkStartTime) / 1000; // 秒
+            if (duration < 1) return;
+            
+            const mapCfg = gameData.mapConfig[gameData.currentMap];
+            const expPerSec = mapCfg.exp / 10;
+            const goldPerSec = mapCfg.gold / 10;
+            
+            // 收益丹加成
+            const gainMult = gameData.pill.gainExpire > Date.now() ? 1.5 : 1;
+            
+            const expGain = Math.floor(expPerSec * duration * gainMult);
+            const goldGain = Math.floor(goldPerSec * duration * gainMult);
+            
+            gameData.afkGain.exp += expGain;
+            gameData.afkGain.gold += goldGain;
+            gameData.afkStartTime = now;
+            
+            updateUI();
+        }
+
+        // 领取挂机收益
+        function claimAfkReward() {
+            if (gameData.afkGain.exp <= 0 && gameData.afkGain.gold <= 0) {
+                updateLog("暂无挂机收益可领取！");
+                return;
+            }
+            
+            gameData.exp += gameData.afkGain.exp;
+            gameData.gold += gameData.afkGain.gold;
+            updateLog(`领取挂机收益：经验+${gameData.afkGain.exp} 灵石+${gameData.afkGain.gold}`);
+            
+            gameData.afkGain.exp = 0;
+            gameData.afkGain.gold = 0;
+            levelUp();
+            updateUI();
+        }
+
+        // 检查BOSS CD
+        function checkBossCD() {
+            const now = Date.now() / 1000;
+            const remain = gameData.bossCD - (now - gameData.lastBossTime);
+            
+            if (remain > 0 && gameData.lastBossTime > 0) {
+                document.getElementById("bossCountdown").style.display = "block";
+                updateBossCD(remain);
+                setInterval(() => {
+                    const newRemain = gameData.bossCD - (Date.now() / 1000 - gameData.lastBossTime);
+                    if (newRemain <= 0) {
+                        document.getElementById("bossCountdown").style.display = "none";
+                        return;
+                    }
+                    updateBossCD(newRemain);
+                }, 1000);
+            }
+        }
+
+        function updateBossCD(seconds) {
+            const h = Math.floor(seconds / 3600).toString().padStart(2, "0");
+            const m = Math.floor((seconds % 3600) / 60).toString().padStart(2, "0");
+            const s = Math.floor(seconds % 60).toString().padStart(2, "0");
+            document.getElementById("bossCD").textContent = `${h}:${m}:${s}`;
+        }
+
+        // 更新buff倒计时
+        function updateBuff() {
+            if (gameData.pill.atkExpire < Date.now()) gameData.pill.atkExpire = 0;
+            if (gameData.pill.gainExpire < Date.now()) gameData.pill.gainExpire = 0;
+            if (gameData.skill.cd > 0) gameData.skill.cd--;
+            updateUI();
+        }
+
+        // 初始化游戏
+        window.onload = function() {
+            loadData();
+            updateLog("游戏加载完成！开始你的修仙之旅～");
+        };
+    </script>
+</body>
+</html>

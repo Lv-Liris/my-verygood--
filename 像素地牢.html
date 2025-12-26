@@ -1,0 +1,538 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>像素地牢 | 1MB大游戏</title>
+    <style>
+        * {margin:0;padding:0;box-sizing:border-box;font-family:monospace;}
+        body {background:#000;color:#fff;display:flex;flex-direction:column;align-items:center;padding:10px;}
+        #game-container {position:relative;width:320px;height:480px;border:2px solid #333;background:#111;overflow:hidden;}
+        #game-canvas {width:100%;height:100%;image-rendering:pixelated;}
+        #ui {position:absolute;top:0;left:0;width:100%;padding:5px;background:rgba(0,0,0,0.7);z-index:10;}
+        #stats {display:flex;justify-content:space-between;font-size:12px;}
+        #messages {position:absolute;bottom:0;left:0;width:100%;padding:5px;background:rgba(0,0,0,0.7);font-size:11px;max-height:60px;overflow-y:auto;}
+        #start-screen {position:absolute;top:0;left:0;width:100%;height:100%;background:#000;display:flex;flex-direction:column;justify-content:center;align-items:center;z-index:20;}
+        #start-btn {margin-top:20px;padding:10px 20px;background:#228B22;color:#fff;border:none;border-radius:5px;cursor:pointer;font-size:16px;}
+        #start-btn:hover {background:#32CD32;}
+        #controls {margin-top:10px;font-size:10px;color:#888;text-align:center;}
+        .hidden {display:none!important;}
+    </style>
+</head>
+<body>
+    <h3>像素地牢冒险 | 1MB大游戏</h3>
+    <div id="game-container">
+        <div id="start-screen">
+            <h2>像素地牢</h2>
+            <p>探索随机地牢，击败BOSS！</p>
+            <button id="start-btn">开始游戏</button>
+            <div id="controls">
+                WASD/方向键移动 | 空格攻击 | 拾取道具自动使用
+            </div>
+        </div>
+        
+        <div id="ui">
+            <div id="stats">
+                <span>HP: <span id="hp">10</span>/10</span>
+                <span>ATK: <span id="atk">2</span></span>
+                <span>房间: <span id="room">1</span></span>
+            </div>
+        </div>
+        
+        <div id="messages"></div>
+        <canvas id="game-canvas" width="320" height="480"></canvas>
+    </div>
+
+    <script>
+        // 核心游戏配置（体积优化：精简变量，移除冗余）
+        const config = {
+            tileSize: 16,
+            width: 20,  // 20*16=320px
+            height: 30, // 30*16=480px
+            player: {x: 10, y: 15, hp: 10, maxHp: 10, atk: 2, invulnerable: false},
+            map: [],
+            entities: [],
+            items: [],
+            roomNum: 1,
+            gameState: 'start', // start/playing/gameover/victory
+            keys: {},
+            messages: [],
+            colors: {
+                wall: '#444', floor: '#222', player: '#00ff00', 
+                enemy: '#ff0000', boss: '#ff8800', item: '#ffff00',
+                door: '#888888', exit: '#0088ff'
+            }
+        };
+
+        // 获取DOM元素
+        const canvas = document.getElementById('game-canvas');
+        const ctx = canvas.getContext('2d');
+        const startScreen = document.getElementById('start-screen');
+        const startBtn = document.getElementById('start-btn');
+        const hpEl = document.getElementById('hp');
+        const atkEl = document.getElementById('atk');
+        const roomEl = document.getElementById('room');
+        const messagesEl = document.getElementById('messages');
+
+        // 初始化
+        startBtn.addEventListener('click', startGame);
+        window.addEventListener('keydown', (e) => {config.keys[e.key] = true;});
+        window.addEventListener('keyup', (e) => {config.keys[e.key] = false;});
+
+        // 开始游戏
+        function startGame() {
+            startScreen.classList.add('hidden');
+            config.gameState = 'playing';
+            config.player.hp = config.player.maxHp;
+            config.roomNum = 1;
+            config.messages = [];
+            generateMap();
+            updateUI();
+            addMessage("欢迎来到像素地牢！探索房间，击败敌人！");
+            gameLoop();
+        }
+
+        // 生成随机地图（体积优化：简化算法，固定房间结构）
+        function generateMap() {
+            // 清空地图和实体
+            config.map = [];
+            config.entities = [];
+            config.items = [];
+
+            // 初始化地图为墙
+            for (let y = 0; y < config.height; y++) {
+                config.map[y] = [];
+                for (let x = 0; x < config.width; x++) {
+                    config.map[y][x] = 'wall';
+                }
+            }
+
+            // 生成房间（中心区域）
+            const roomSize = 16;
+            const startX = (config.width - roomSize) / 2;
+            const startY = (config.height - roomSize) / 2;
+            
+            for (let y = startY; y < startY + roomSize; y++) {
+                for (let x = startX; x < startX + roomSize; x++) {
+                    config.map[y][x] = 'floor';
+                }
+            }
+
+            // 生成门/出口
+            config.map[startY + roomSize/2][startX - 1] = config.roomNum % 5 === 0 ? 'exit' : 'door';
+            
+            // 生成玩家
+            config.player.x = config.width / 2;
+            config.player.y = config.height / 2;
+            
+            // 生成怪物
+            const enemyCount = Math.min(3 + config.roomNum, 8);
+            for (let i = 0; i < enemyCount; i++) {
+                let x, y;
+                // 确保怪物不在玩家旁边
+                do {
+                    x = Math.floor(startX + Math.random() * roomSize);
+                    y = Math.floor(startY + Math.random() * roomSize);
+                } while (Math.abs(x - config.player.x) < 3 && Math.abs(y - config.player.y) < 3);
+                
+                // 每5关生成BOSS
+                const type = config.roomNum % 5 === 0 && i === 0 ? 'boss' : 'enemy';
+                config.entities.push({
+                    x, y, type, 
+                    hp: type === 'boss' ? 15 + config.roomNum : 5 + Math.floor(config.roomNum/2),
+                    atk: type === 'boss' ? 3 + Math.floor(config.roomNum/3) : 1 + Math.floor(config.roomNum/3),
+                    speed: type === 'boss' ? 80 : 60,
+                    lastMove: 0
+                });
+            }
+
+            // 生成道具
+            const itemCount = Math.min(2 + Math.floor(config.roomNum/2), 4);
+            for (let i = 0; i < itemCount; i++) {
+                let x, y;
+                do {
+                    x = Math.floor(startX + Math.random() * roomSize);
+                    y = Math.floor(startY + Math.random() * roomSize);
+                } while (
+                    (Math.abs(x - config.player.x) < 2 && Math.abs(y - config.player.y) < 2) ||
+                    config.entities.some(e => Math.abs(e.x - x) < 1 && Math.abs(e.y - y) < 1)
+                );
+                
+                // 随机道具类型
+                const types = ['hp', 'atk', 'hp+', 'atk+'];
+                const type = types[Math.floor(Math.random() * types.length)];
+                config.items.push({x, y, type});
+            }
+
+            updateUI();
+        }
+
+        // 游戏主循环
+        function gameLoop() {
+            if (config.gameState !== 'playing') return;
+            
+            // 清空画布
+            ctx.fillStyle = '#000';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            // 处理输入
+            handleInput();
+            
+            // 更新实体
+            updateEntities();
+            
+            // 检测碰撞
+            checkCollisions();
+            
+            // 绘制地图和实体
+            drawMap();
+            drawEntities();
+            drawPlayer();
+            
+            // 继续循环
+            requestAnimationFrame(gameLoop);
+        }
+
+        // 处理玩家输入
+        function handleInput() {
+            const speed = 5; // 移动速度（帧率无关）
+            let moved = false;
+            
+            // 无敌状态计时
+            if (config.player.invulnerable) {
+                config.player.invulnerableTimer = (config.player.invulnerableTimer || 0) - 1;
+                if (config.player.invulnerableTimer <= 0) {
+                    config.player.invulnerable = false;
+                }
+            }
+
+            // 移动（WASD/方向键）
+            if (config.keys['w'] || config.keys['ArrowUp']) {
+                if (config.map[Math.floor(config.player.y - speed/10)][Math.floor(config.player.x)] !== 'wall') {
+                    config.player.y -= speed/10;
+                    moved = true;
+                }
+            }
+            if (config.keys['s'] || config.keys['ArrowDown']) {
+                if (config.map[Math.floor(config.player.y + speed/10)][Math.floor(config.player.x)] !== 'wall') {
+                    config.player.y += speed/10;
+                    moved = true;
+                }
+            }
+            if (config.keys['a'] || config.keys['ArrowLeft']) {
+                if (config.map[Math.floor(config.player.y)][Math.floor(config.player.x - speed/10)] !== 'wall') {
+                    config.player.x -= speed/10;
+                    moved = true;
+                }
+            }
+            if (config.keys['d'] || config.keys['ArrowRight']) {
+                if (config.map[Math.floor(config.player.y)][Math.floor(config.player.x + speed/10)] !== 'wall') {
+                    config.player.x += speed/10;
+                    moved = true;
+                }
+            }
+
+            // 攻击（空格）
+            if (config.keys[' '] && !config.player.attacking) {
+                attack();
+                config.player.attacking = true;
+                setTimeout(() => {config.player.attacking = false;}, 300);
+            } else if (!config.keys[' ']) {
+                config.player.attacking = false;
+            }
+
+            // 进入下一关
+            const playerTileX = Math.floor(config.player.x);
+            const playerTileY = Math.floor(config.player.y);
+            if (config.map[playerTileY][playerTileX] === 'door' || config.map[playerTileY][playerTileX] === 'exit') {
+                if (config.map[playerTileY][playerTileX] === 'exit' && config.roomNum % 5 === 0) {
+                    // 通关
+                    victory();
+                } else {
+                    // 下一关
+                    config.roomNum++;
+                    addMessage(`进入第${config.roomNum}房间！`);
+                    generateMap();
+                }
+            }
+        }
+
+        // 玩家攻击
+        function attack() {
+            // 播放音效（体积优化：使用Web Audio API生成音效，无外部文件）
+            playSound(440, 100, 0.1);
+            
+            // 检测攻击范围内的敌人
+            const hitBox = 1.2;
+            const hitEntities = config.entities.filter(e => 
+                Math.abs(e.x - config.player.x) < hitBox && 
+                Math.abs(e.y - config.player.y) < hitBox
+            );
+
+            if (hitEntities.length > 0) {
+                hitEntities.forEach(e => {
+                    e.hp -= config.player.atk;
+                    addMessage(`你对${e.type === 'boss' ? 'BOSS' : '怪物'}造成了${config.player.atk}点伤害！`);
+                    
+                    // 怪物死亡
+                    if (e.hp <= 0) {
+                        addMessage(`你击败了${e.type === 'boss' ? 'BOSS' : '怪物'}！`);
+                        // BOSS掉落更好的道具
+                        if (e.type === 'boss') {
+                            config.items.push({
+                                x: e.x, y: e.y, 
+                                type: Math.random() > 0.5 ? 'hp+' : 'atk+'
+                            });
+                        }
+                        // 移除死亡怪物
+                        config.entities = config.entities.filter(ent => ent !== e);
+                    }
+                });
+            } else {
+                addMessage("你挥空了！");
+            }
+        }
+
+        // 更新实体（怪物AI）
+        function updateEntities() {
+            const now = Date.now();
+            
+            config.entities.forEach(entity => {
+                // 移动冷却
+                if (now - entity.lastMove < entity.speed * 10) return;
+                
+                // 向玩家移动
+                const dx = config.player.x - entity.x;
+                const dy = config.player.y - entity.y;
+                const dist = Math.sqrt(dx*dx + dy*dy);
+                
+                if (dist < 8) { // 视野范围
+                    // 移动
+                    entity.x += dx / dist * 0.2;
+                    entity.y += dy / dist * 0.2;
+                    
+                    // 攻击玩家
+                    if (dist < 1.5 && !config.player.invulnerable) {
+                        config.player.hp -= entity.atk;
+                        config.player.invulnerable = true;
+                        config.player.invulnerableTimer = 60; // 1秒无敌
+                        playSound(220, 200, 0.1);
+                        addMessage(`${entity.type === 'boss' ? 'BOSS' : '怪物'}对你造成了${entity.atk}点伤害！`);
+                        
+                        // 检查死亡
+                        if (config.player.hp <= 0) {
+                            gameOver();
+                        }
+                    }
+                }
+                
+                entity.lastMove = now;
+            });
+        }
+
+        // 碰撞检测（道具拾取）
+        function checkCollisions() {
+            const playerX = Math.floor(config.player.x);
+            const playerY = Math.floor(config.player.y);
+            
+            // 拾取道具
+            config.items.forEach((item, index) => {
+                if (Math.floor(item.x) === playerX && Math.floor(item.y) === playerY) {
+                    // 使用道具
+                    switch(item.type) {
+                        case 'hp':
+                            config.player.hp = Math.min(config.player.maxHp, config.player.hp + 3);
+                            addMessage("你恢复了3点生命值！");
+                            break;
+                        case 'hp+':
+                            config.player.maxHp += 2;
+                            config.player.hp = config.player.maxHp;
+                            addMessage("你的最大生命值提升了！");
+                            break;
+                        case 'atk':
+                            config.player.atk += 1;
+                            addMessage("你的攻击力提升了！");
+                            break;
+                        case 'atk+':
+                            config.player.atk += 2;
+                            addMessage("你的攻击力大幅提升！");
+                            break;
+                    }
+                    
+                    // 播放音效
+                    playSound(880, 150, 0.1);
+                    
+                    // 移除道具
+                    config.items.splice(index, 1);
+                    updateUI();
+                }
+            });
+        }
+
+        // 绘制地图
+        function drawMap() {
+            for (let y = 0; y < config.height; y++) {
+                for (let x = 0; x < config.width; x++) {
+                    ctx.fillStyle = config.colors[config.map[y][x]] || '#000';
+                    ctx.fillRect(
+                        x * config.tileSize,
+                        y * config.tileSize,
+                        config.tileSize,
+                        config.tileSize
+                    );
+                    
+                    // 绘制网格（体积优化：简化网格）
+                    ctx.strokeStyle = '#333';
+                    ctx.lineWidth = 0.5;
+                    ctx.strokeRect(
+                        x * config.tileSize,
+                        y * config.tileSize,
+                        config.tileSize,
+                        config.tileSize
+                    );
+                }
+            }
+
+            // 绘制道具
+            config.items.forEach(item => {
+                ctx.fillStyle = config.colors.item;
+                // 像素化道具（体积优化：简化绘制）
+                ctx.fillRect(
+                    item.x * config.tileSize + 4,
+                    item.y * config.tileSize + 4,
+                    8, 8
+                );
+                // 道具闪烁效果
+                if (Math.floor(Date.now() / 500) % 2 === 0) {
+                    ctx.fillStyle = '#ffffff';
+                    ctx.fillRect(
+                        item.x * config.tileSize + 6,
+                        item.y * config.tileSize + 6,
+                        4, 4
+                    );
+                }
+            });
+        }
+
+        // 绘制实体（怪物）
+        function drawEntities() {
+            config.entities.forEach(entity => {
+                ctx.fillStyle = config.colors[entity.type];
+                
+                // 像素化怪物（体积优化：简化绘制）
+                const size = entity.type === 'boss' ? 12 : 10;
+                ctx.fillRect(
+                    entity.x * config.tileSize + (config.tileSize - size)/2,
+                    entity.y * config.tileSize + (config.tileSize - size)/2,
+                    size, size
+                );
+                
+                // BOSS额外绘制
+                if (entity.type === 'boss') {
+                    ctx.strokeStyle = '#ffffff';
+                    ctx.lineWidth = 2;
+                    ctx.strokeRect(
+                        entity.x * config.tileSize + 2,
+                        entity.y * config.tileSize + 2,
+                        12, 12
+                    );
+                }
+            });
+        }
+
+        // 绘制玩家
+        function drawPlayer() {
+            // 无敌状态闪烁
+            if (config.player.invulnerable && Math.floor(Date.now() / 100) % 2 === 0) {
+                ctx.fillStyle = '#ffffff';
+            } else {
+                ctx.fillStyle = config.colors.player;
+            }
+            
+            // 像素化玩家
+            ctx.fillRect(
+                config.player.x * config.tileSize + 3,
+                config.player.y * config.tileSize + 3,
+                10, 10
+            );
+            
+            // 攻击动画
+            if (config.player.attacking) {
+                ctx.strokeStyle = '#ffffff';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.arc(
+                    config.player.x * config.tileSize + 8,
+                    config.player.y * config.tileSize + 8,
+                    15, 0, Math.PI * 2
+                );
+                ctx.stroke();
+            }
+        }
+
+        // 更新UI
+        function updateUI() {
+            hpEl.textContent = config.player.hp + '/' + config.player.maxHp;
+            atkEl.textContent = config.player.atk;
+            roomEl.textContent = config.roomNum;
+        }
+
+        // 添加消息
+        function addMessage(text) {
+            config.messages.unshift(text);
+            if (config.messages.length > 4) config.messages.pop();
+            messagesEl.innerHTML = config.messages.join('<br>');
+        }
+
+        // 生成音效（体积优化：无外部音频文件）
+        function playSound(freq, duration, volume) {
+            try {
+                const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                const oscillator = audioCtx.createOscillator();
+                const gainNode = audioCtx.createGain();
+                
+                oscillator.type = 'square'; // 像素风格音效
+                oscillator.frequency.value = freq;
+                gainNode.gain.value = volume;
+                
+                oscillator.connect(gainNode);
+                gainNode.connect(audioCtx.destination);
+                
+                oscillator.start();
+                setTimeout(() => {
+                    oscillator.stop();
+                    audioCtx.close();
+                }, duration);
+            } catch (e) { /* 忽略音效错误 */ }
+        }
+
+        // 游戏结束
+        function gameOver() {
+            config.gameState = 'gameover';
+            addMessage("你死了！游戏结束！");
+            playSound(110, 500, 0.2);
+            
+            // 显示重新开始
+            setTimeout(() => {
+                startScreen.classList.remove('hidden');
+                startScreen.querySelector('h2').textContent = '游戏结束';
+                startScreen.querySelector('p').textContent = `你到达了第${config.roomNum}房间`;
+            }, 1000);
+        }
+
+        // 通关
+        function victory() {
+            config.gameState = 'victory';
+            addMessage("恭喜！你击败了最终BOSS，通关成功！");
+            playSound(1760, 1000, 0.2);
+            
+            // 显示重新开始
+            setTimeout(() => {
+                startScreen.classList.remove('hidden');
+                startScreen.querySelector('h2').textContent = '通关成功！';
+                startScreen.querySelector('p').textContent = `你完成了${config.roomNum}房间的挑战！`;
+            }, 2000);
+        }
+    </script>
+</body>
+</html>

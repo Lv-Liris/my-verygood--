@@ -1,0 +1,748 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D我的世界简单版</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdn.jsdelivr.net/npm/font-awesome@4.7.0/css/font-awesome.min.css" rel="stylesheet">
+    <!-- Three.js 库 -->
+    <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/build/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/examples/js/controls/OrbitControls.js"></script>
+    
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#4CAF50',
+                        secondary: '#FFC107',
+                        dark: '#212121',
+                        light: '#F5F5F5'
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif']
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <style type="text/tailwindcss">
+        @layer utilities {
+            .fullscreen {
+                width: 100vw;
+                height: 100vh;
+                overflow: hidden;
+            }
+            .cursor-grab {
+                cursor: grab;
+            }
+            .cursor-grabbing {
+                cursor: grabbing;
+            }
+            .info-panel {
+                background-color: rgba(0, 0, 0, 0.7);
+                color: white;
+                padding: 1rem;
+                border-radius: 0.5rem;
+                position: absolute;
+                top: 1rem;
+                left: 1rem;
+                z-index: 10;
+                max-width: 300px;
+            }
+            .control-hint {
+                position: absolute;
+                bottom: 1rem;
+                left: 50%;
+                transform: translateX(-50%);
+                background-color: rgba(0, 0, 0, 0.7);
+                color: white;
+                padding: 0.5rem 1rem;
+                border-radius: 0.5rem;
+                z-index: 10;
+            }
+        }
+    </style>
+</head>
+<body class="bg-dark text-light overflow-hidden">
+    <!-- 信息面板 -->
+    <div class="info-panel">
+        <h2 class="text-xl font-bold mb-2">3D我的世界简单版</h2>
+        <p class="text-sm">观察一个简化版的我的世界世界场景，包括人物走动和环境元素。</p>
+    </div>
+    
+    <!-- 控制提示 -->
+    <div class="control-hint">
+        <i class="fa fa fa-mouse-pointer mr-2"></i> 鼠标拖拽旋转视角 | 
+        <i class="fa fa-search mr-2"></i> 滚轮缩放 | 
+        <i class="fa fa-refresh mr-2"></i> 双击重置视角 |
+        <span id="fps-counter" class="ml-4">FPS: 0</span>
+    </div>
+    
+    <!-- 3D场景容器 -->
+    <div id="scene-container" class="fullscreen cursor-grab"></div>
+    
+    <script>
+        // 全局变量
+        let scene, camera, renderer, controls;
+        let players = [];
+        let playerAnimations = [];
+        let clock = new THREE.Clock();
+        
+        // 初始化函数
+        function init() {
+            // 创建场景
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x87CEEB); // 天空蓝色
+            
+            // 创建相机
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.set(0, 5, 10);
+            
+            // 创建渲染器
+            renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.shadowMap.enabled = true;
+            renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2)); // 限制像素比，提高性能
+            
+            // 优化渲染设置
+            renderer.toneMapping = THREE.LinearToneMapping;
+            renderer.toneMappingExposure = 1.0;
+            renderer.autoClear = true;
+            
+            // 添加到DOM
+            const container = document.getElementById('scene-container');
+            container.appendChild(renderer.domElement);
+            
+            // 添加轨道控制器
+            controls = new THREE.OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true;
+            controls.dampingFactor = 0.05;
+            controls.screenSpacePanning = false;
+            controls.maxPolarAngle = Math.PI / 2;
+            controls.minDistance = 3;
+            controls.maxDistance = 40; // 增加最大距离，以便查看更大的场景
+            controls.enableRotate = true;
+            controls.enableZoom = true;
+            controls.rotateSpeed = 0.5; // 降低旋转速度
+            controls.zoomSpeed = 0.5; // 降低缩放速度
+            
+            // 添加事件监听
+            window.addEventListener('resize', onWindowResize);
+            container.addEventListener('mousedown', () => container.classList.add('cursor-grabbing'));
+            container.addEventListener('mouseup', () => container.classList.remove('cursor-grabbing'));
+            
+            // 创建世界
+            createWorld();
+            
+            // 创建人物
+            createPlayer(0, 0, 0, 0x1976D2, 0x303F9F); // 第一个人物
+            createPlayer(-8, 0, -8, 0x4CAF50, 0x8D6E63); // 第二个人物
+            
+            // 开始动画循环
+            animate();
+        }
+        
+        // 创建世界
+        function createWorld() {
+            // 创建地面 - 增加地面大小
+            const groundGeometry = new THREE.PlaneGeometry(100, 100, 10, 10); // 增加地面大小
+            
+            // 使用草地纹理
+            const grassTexture = new THREE.TextureLoader().load('https://p26-doubao-search-sign.byteimg.com/labis/b236453dac96023cab19816b943a0630~tplv-be4g95zd3a-image.jpeg?rk3s=542c0f93&x-expires=1776848707&x-signature=YuYaXDQFYXtnn53NSkPBMbH5oFk%3D');
+            grassTexture.wrapS = THREE.RepeatWrapping;
+            grassTexture.wrapT = THREE.RepeatWrapping;
+            grassTexture.repeat.set(20, 20); // 增加纹理重复次数
+            grassTexture.anisotropy = renderer.capabilities.getMaxAnisotropy(); // 设置各向异性过滤
+            
+            const groundMaterial = new THREE.MeshStandardMaterial({ 
+                map: grassTexture,
+                roughness: 0.8,
+                metalness: 0.2
+            });
+            
+            const ground = new THREE.Mesh(groundGeometry, groundMaterial);
+            ground.rotation.x = -Math.PI / 2;
+            ground.position.y = -0.5;
+            ground.receiveShadow = true;
+            scene.add(ground);
+            
+            // 创建树木
+            createTrees();
+            
+            // 创建简单房屋
+            createHouse();
+            
+            // 创建城堡
+            createCastle();
+            
+            // 添加光源
+            addLights();
+        }
+        
+        // 创建树木
+        function createTrees() {
+            // 树木位置数组 - 调整位置，避免与建筑重叠
+            const treePositions = [
+                [5, 0, 5], [-5, 0, 5], [5, 0, -5], [-5, 0, -5],
+                [10, 0, 0], [-10, 0, 0], [0, 0, 10], [0, 0, -10],
+                [8, 0, 8], [-8, 0, 8], [8, 0, -8], [-8, 0, -8],
+                [15, 0, 15], [-15, 0, 15], [15, 0, -15], [-15, 0, -15],
+                [12, 0, 0], [-12, 0, 0], [0, 0, 12], [0, 0, -12],
+                [12, 0, -6], [-12, 0, -6], [-6, 0, 12], [6, 0, 12]
+            ];
+            
+            // 检查树木位置是否与建筑重叠
+            const validTreePositions = treePositions.filter(pos => {
+                const x = pos[0];
+                const z = pos[2];
+                
+                // 检查是否与房屋重叠 (房屋位置: x: -3, z: -3, 大小: 6x6)
+                const houseOverlap = (x >= -6 && x <= 0 && z >= -6 && z <= 0);
+                
+                // 检查是否与城堡重叠 (城堡位置: x: 10, z: 10, 大小: 12x12)
+                const castleOverlap = (x >= 4 && x <= 16 && z >= 4 && z <= 16);
+                
+                return !houseOverlap && !castleOverlap;
+            });
+            
+            // 树干材质
+            const trunkTexture = new THREE.TextureLoader().load('https://p3-doubao-search-sign.byteimg.com/labis/1e706a0d290e8e7af15fbf205e2a14ce~tplv-be4g95zd3a-image.jpeg?rk3s=542c0f93&x-expires=1776848708&x-signature=d8pDamjWRiilU%2FrPYXRiVEQOvt4%3D');
+            const trunkMaterial = new THREE.MeshStandardMaterial({ 
+                map: trunkTexture,
+                roughness: 0.7,
+                metalness: 0.1
+            });
+            
+            // 树叶材质
+            const leavesMaterial = new THREE.MeshStandardMaterial({ 
+                color: 0x2E7D32,
+                roughness: 0.5,
+                metalness: 0.0
+            });
+            
+            // 创建多棵树
+            validTreePositions.forEach(pos => {
+                // 树干 - 减少分段数
+                const trunkGeometry = new THREE.CylinderGeometry(0.5, 0.5, 2, 8);
+                const trunk = new THREE.Mesh(trunkGeometry, trunkMaterial);
+                trunk.position.set(pos[0], 1, pos[2]);
+                trunk.castShadow = true;
+                trunk.receiveShadow = true;
+                scene.add(trunk);
+                
+                // 树叶 - 减少分段数
+                const leavesGeometry = new THREE.ConeGeometry(2, 3, 8);
+                const leaves = new THREE.Mesh(leavesGeometry, leavesMaterial);
+                leaves.position.set(pos[0], 3.5, pos[2]);
+                leaves.castShadow = true;
+                leaves.receiveShadow = false; // 树叶不接收阴影
+                scene.add(leaves);
+            });
+        }
+        
+        // 创建简单房屋
+        function createHouse() {
+            // 房屋位置
+            const housePosition = new THREE.Vector3(-3, 0, -3);
+            
+            // 使用更少的材质实例
+            const wallMaterial = new THREE.MeshStandardMaterial({ 
+                color: 0x8D6E63,
+                roughness: 0.8,
+                metalness: 0.1
+            });
+            
+            const roofMaterial = new THREE.MeshStandardMaterial({ 
+                color: 0x5D4037,
+                roughness: 0.7,
+                metalness: 0.2
+            });
+            
+            const windowMaterial = new THREE.MeshStandardMaterial({ 
+                color: 0xBBDEFB,
+                roughness: 0.3,
+                metalness: 0.5,
+                transparent: true,
+                opacity: 0.7
+            });
+            
+            const doorMaterial = new THREE.MeshStandardMaterial({ 
+                color: 0x795548,
+                roughness: 0.8,
+                metalness: 0.1
+            });
+            
+            // 地板 - 减少分段数
+            const floorGeometry = new THREE.BoxGeometry(6, 0.1, 6, 1, 1, 1);
+            const floor = new THREE.Mesh(floorGeometry, wallMaterial);
+            floor.position.set(housePosition.x, -0.05, housePosition.z);
+            floor.receiveShadow = true;
+            scene.add(floor);
+            
+            // 墙壁
+            // 前墙 - 减少分段数
+            const frontWallGeometry = new THREE.BoxGeometry(6, 4, 0.1, 1, 1, 1);
+            const frontWall = new THREE.Mesh(frontWallGeometry, wallMaterial);
+            frontWall.position.set(housePosition.x, 2, housePosition.z + 3);
+            frontWall.castShadow = true;
+            frontWall.receiveShadow = true;
+            scene.add(frontWall);
+            
+            // 后墙
+            const backWall = new THREE.Mesh(frontWallGeometry, wallMaterial);
+            backWall.position.set(housePosition.x, 2, housePosition.z - 3);
+            backWall.castShadow = true;
+            backWall.receiveShadow = true;
+            scene.add(backWall);
+            
+            // 左墙 - 减少分段数
+            const sideWallGeometry = new THREE.BoxGeometry(5.8, 4, 0.1, 1, 1, 1);
+            const leftWall = new THREE.Mesh(sideWallGeometry, wallMaterial);
+            leftWall.position.set(housePosition.x - 3, 2, housePosition.z);
+            leftWall.rotation.y = Math.PI / 2;
+            leftWall.castShadow = true;
+            leftWall.receiveShadow = true;
+            scene.add(leftWall);
+            
+            // 右墙
+            const rightWall = new THREE.Mesh(sideWallGeometry, wallMaterial);
+            rightWall.position.set(housePosition.x + 3, 2, housePosition.z);
+            rightWall.rotation.y = Math.PI / 2;
+            rightWall.castShadow = true;
+            rightWall.receiveShadow = true;
+            scene.add(rightWall);
+            
+            // 屋顶 - 减少分段数
+            const roofGeometry = new THREE.ConeGeometry(4, 2, 4, 1);
+            const roof = new THREE.Mesh(roofGeometry, roofMaterial);
+            roof.position.set(housePosition.x, 5, housePosition.z);
+            roof.rotation.y = Math.PI / 4;
+            roof.castShadow = true;
+            roof.receiveShadow = true;
+            scene.add(roof);
+            
+            // 窗户 - 减少分段数
+            const windowGeometry = new THREE.BoxGeometry(1, 1, 0.11, 1, 1, 1);
+            
+            // 前墙窗户（左）
+            const frontWindowLeft = new THREE.Mesh(windowGeometry, windowMaterial);
+            frontWindowLeft.position.set(housePosition.x - 1.5, 2.5, housePosition.z + 3.05);
+            scene.add(frontWindowLeft);
+            
+            // 前墙窗户（右）
+            const frontWindowRight = new THREE.Mesh(windowGeometry, windowMaterial);
+            frontWindowRight.position.set(housePosition.x + 1.5, 2.5, housePosition.z + 3.05);
+            scene.add(frontWindowRight);
+            
+            // 左墙窗户
+            const leftWindow = new THREE.Mesh(windowGeometry, windowMaterial);
+            leftWindow.position.set(housePosition.x - 3.05, 2.5, housePosition.z);
+            leftWindow.rotation.y = Math.PI / 2;
+            scene.add(leftWindow);
+            
+            // 右墙窗户
+            const rightWindow = new THREE.Mesh(windowGeometry, windowMaterial);
+            rightWindow.position.set(housePosition.x + 3.05, 2.5, housePosition.z);
+            rightWindow.rotation.y = Math.PI / 2;
+            scene.add(rightWindow);
+            
+            // 门 - 减少分段数
+            const doorGeometry = new THREE.BoxGeometry(1.5, 2.5, 0.11, 1, 1, 1);
+            const door = new THREE.Mesh(doorGeometry, doorMaterial);
+            door.position.set(housePosition.x, 1.25, housePosition.z + 3.05);
+            scene.add(door);
+        }
+        
+        // 创建城堡
+        function createCastle() {
+            // 城堡位置
+            const castlePosition = new THREE.Vector3(10, 0, 10);
+            
+            // 城堡材质
+            const wallMaterial = new THREE.MeshStandardMaterial({ 
+                color: 0x795548,
+                roughness: 0.8,
+                metalness: 0.1
+            });
+            
+            const towerMaterial = new THREE.MeshStandardMaterial({ 
+                color: 0x5D4037,
+                roughness: 0.7,
+                metalness: 0.2
+            });
+            
+            const roofMaterial = new THREE.MeshStandardMaterial({ 
+                color: 0x3E2723,
+                roughness: 0.6,
+                metalness: 0.3
+            });
+            
+            // 城堡主体
+            const mainTowerGeometry = new THREE.CylinderGeometry(3, 3, 8, 8);
+            const mainTower = new THREE.Mesh(mainTowerGeometry, towerMaterial);
+            mainTower.position.set(castlePosition.x, 4, castlePosition.z);
+            mainTower.castShadow = true;
+            mainTower.receiveShadow = true;
+            scene.add(mainTower);
+            
+            // 城堡屋顶
+            const roofGeometry = new THREE.ConeGeometry(4, 3, 8);
+            const roof = new THREE.Mesh(roofGeometry, roofMaterial);
+            roof.position.set(castlePosition.x, 9, castlePosition.z);
+            roof.castShadow = true;
+            roof.receiveShadow = true;
+            scene.add(roof);
+            
+            // 城堡墙壁
+            const wallLength = 12;
+            const wallThickness = 1;
+            const wallHeight = 4;
+            
+            // 前墙
+            const frontWallGeometry = new THREE.BoxGeometry(wallLength, wallHeight, wallThickness);
+            const frontWall = new THREE.Mesh(frontWallGeometry, wallMaterial);
+            frontWall.position.set(castlePosition.x, wallHeight/2, castlePosition.z + 5);
+            frontWall.castShadow = true;
+            frontWall.receiveShadow = true;
+            scene.add(frontWall);
+            
+            // 后墙
+            const backWall = new THREE.Mesh(frontWallGeometry, wallMaterial);
+            backWall.position.set(castlePosition.x, wallHeight/2, castlePosition.z - 5);
+            backWall.castShadow = true;
+            backWall.receiveShadow = true;
+            scene.add(backWall);
+            
+            // 左墙
+            const sideWallGeometry = new THREE.BoxGeometry(wallLength - 2, wallHeight, wallThickness);
+            const leftWall = new THREE.Mesh(sideWallGeometry, wallMaterial);
+            leftWall.position.set(castlePosition.x - 5, wallHeight/2, castlePosition.z);
+            leftWall.rotation.y = Math.PI / 2;
+            leftWall.castShadow = true;
+            leftWall.receiveShadow = true;
+            scene.add(leftWall);
+            
+            // 右墙
+            const rightWall = new THREE.Mesh(sideWallGeometry, wallMaterial);
+            rightWall.position.set(castlePosition.x + 5, wallHeight/2, castlePosition.z);
+            rightWall.rotation.y = Math.PI / 2;
+            rightWall.castShadow = true;
+            rightWall.receiveShadow = true;
+            scene.add(rightWall);
+            
+            // 城堡塔楼
+            const towerPositions = [
+                [castlePosition.x - 6, castlePosition.z - 6],
+                [castlePosition.x + 6, castlePosition.z - 6],
+                [castlePosition.x - 6, castlePosition.z + 6],
+                [castlePosition.x + 6, castlePosition.z + 6]
+            ];
+            
+            towerPositions.forEach(pos => {
+                // 塔楼主体
+                const towerGeometry = new THREE.CylinderGeometry(1.5, 1.5, 6, 8);
+                const tower = new THREE.Mesh(towerGeometry, towerMaterial);
+                tower.position.set(pos[0], 3, pos[1]);
+                tower.castShadow = true;
+                tower.receiveShadow = true;
+                scene.add(tower);
+                
+                // 塔楼屋顶
+                const towerRoofGeometry = new THREE.ConeGeometry(2, 2, 8);
+                const towerRoof = new THREE.Mesh(towerRoofGeometry, roofMaterial);
+                towerRoof.position.set(pos[0], 7, pos[1]);
+                towerRoof.castShadow = true;
+                towerRoof.receiveShadow = true;
+                scene.add(towerRoof);
+            });
+            
+            // 城堡大门
+            const gateGeometry = new THREE.BoxGeometry(3, 2.5, wallThickness + 0.1);
+            const gateMaterial = new THREE.MeshStandardMaterial({ 
+                color: 0x212121,
+                roughness: 0.9,
+                metalness: 0.0
+            });
+            const gate = new THREE.Mesh(gateGeometry, gateMaterial);
+            gate.position.set(castlePosition.x, 1.25, castlePosition.z + 5.05);
+            scene.add(gate);
+            
+            // 城堡窗户
+            const windowGeometry = new THREE.BoxGeometry(0.8, 1.2, wallThickness + 0.1);
+            const windowMaterial = new THREE.MeshStandardMaterial({ 
+                color: 0xBBDEFB,
+                roughness: 0.3,
+                metalness: 0.5,
+                transparent: true,
+                opacity: 0.7
+            });
+            
+            // 前墙窗户
+            const frontWindow1 = new THREE.Mesh(windowGeometry, windowMaterial);
+            frontWindow1.position.set(castlePosition.x - 3, 2, castlePosition.z + 5.05);
+            scene.add(frontWindow1);
+            
+            const frontWindow2 = new THREE.Mesh(windowGeometry, windowMaterial);
+            frontWindow2.position.set(castlePosition.x + 3, 2, castlePosition.z + 5.05);
+            scene.add(frontWindow2);
+            
+            // 后墙窗户
+            const backWindow1 = new THREE.Mesh(windowGeometry, windowMaterial);
+            backWindow1.position.set(castlePosition.x - 3, 2, castlePosition.z - 5.05);
+            scene.add(backWindow1);
+            
+            const backWindow2 = new THREE.Mesh(windowGeometry, windowMaterial);
+            backWindow2.position.set(castlePosition.x + 3, 2, castlePosition.z - 5.05);
+            scene.add(backWindow2);
+        }
+        
+        // 添加光源
+        function addLights() {
+            // 太阳光（平行光）
+            const sunLight = new THREE.DirectionalLight(0xFFFFFF, 1.0);
+            sunLight.position.set(5, 10, 7.5);
+            sunLight.castShadow = true;
+            
+            // 设置阴影属性 - 降低阴影分辨率和范围
+            sunLight.shadow.mapSize.width = 512;
+            sunLight.shadow.mapSize.height = 512;
+            sunLight.shadow.camera.near = 0.5;
+            sunLight.shadow.camera.far = 20; // 减少阴影相机范围
+            sunLight.shadow.camera.left = -10;
+            sunLight.shadow.camera.right = 10;
+            sunLight.shadow.camera.top = 10;
+            sunLight.shadow.camera.bottom = -10;
+            
+            // 优化阴影过滤
+            sunLight.shadow.filter = THREE.PCFShadowFilter;
+            sunLight.shadow.blurSamples = 2;
+            
+            scene.add(sunLight);
+            
+            // 环境光
+            const ambientLight = new THREE.AmbientLight(0xFFFFFF, 0.5);
+            scene.add(ambientLight);
+        }
+        
+        // 创建人物
+        function createPlayer(startX, startZ, offsetY, bodyColor, pantsColor) {
+            // 创建人物组
+            const player = new THREE.Group();
+            
+            // 使用更少的几何体和材质
+            const skinMaterial = new THREE.MeshStandardMaterial({ 
+                color: 0xF5D7B2,
+                roughness: 0.8,
+                metalness: 0.1
+            });
+            
+            const bodyMaterial = new THREE.MeshStandardMaterial({ 
+                color: bodyColor,
+                roughness: 0.7,
+                metalness: 0.2
+            });
+            
+            const pantsMaterial = new THREE.MeshStandardMaterial({ 
+                color: pantsColor,
+                roughness: 0.8,
+                metalness: 0.1
+            });
+            
+            // 头部
+            const headGeometry = new THREE.BoxGeometry(1, 1, 1);
+            const head = new THREE.Mesh(headGeometry, skinMaterial);
+            head.position.set(0, 2.5, 0);
+            head.castShadow = true;
+            head.receiveShadow = false; // 头部不接收阴影
+            player.add(head);
+            
+            // 身体
+            const bodyGeometry = new THREE.BoxGeometry(1, 1.5, 0.7);
+            const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
+            body.position.set(0, 1, 0);
+            body.castShadow = true;
+            body.receiveShadow = false; // 身体不接收阴影
+            player.add(body);
+            
+            // 左腿
+            const legGeometry = new THREE.BoxGeometry(0.4, 1.5, 0.4);
+            const leftLeg = new THREE.Mesh(legGeometry, pantsMaterial);
+            leftLeg.position.set(-0.3, -0.25, 0);
+            leftLeg.castShadow = true;
+            leftLeg.receiveShadow = false; // 腿部不接收阴影
+            player.add(leftLeg);
+            
+            // 右腿
+            const rightLeg = new THREE.Mesh(legGeometry, pantsMaterial);
+            rightLeg.position.set(0.3, -0.25, 0);
+            rightLeg.castShadow = true;
+            rightLeg.receiveShadow = false; // 腿部不接收阴影
+            player.add(rightLeg);
+            
+            // 左臂
+            const armGeometry = new THREE.BoxGeometry(0.4, 1.2, 0.4);
+            const leftArm = new THREE.Mesh(armGeometry, skinMaterial);
+            leftArm.position.set(-0.8, 1, 0);
+            leftArm.castShadow = true;
+            leftArm.receiveShadow = false; // 手臂不接收阴影
+            player.add(leftArm);
+            
+            // 右臂
+            const rightArm = new THREE.Mesh(armGeometry, skinMaterial);
+            rightArm.position.set(0.8, 1, 0);
+            rightArm.castShadow = true;
+            rightArm.receiveShadow = false; // 手臂不接收阴影
+            player.add(rightArm);
+            
+            // 设置初始位置
+            player.position.set(startX, offsetY, startZ);
+            player.scale.set(0.8, 0.8, 0.8);
+            
+            // 添加到场景
+            scene.add(player);
+            
+            // 创建动画路径 - 不同人物使用不同路径
+            let path;
+            if (startX === 0 && startZ === 0) {
+                // 第一个人物的路径
+                path = [
+                    new THREE.Vector3(startX, offsetY, startZ),
+                    new THREE.Vector3(startX + 4, offsetY, startZ),
+                    new THREE.Vector3(startX + 4, offsetY, startZ + 4),
+                    new THREE.Vector3(startX, offsetY, startZ + 4),
+                    new THREE.Vector3(startX, offsetY, startZ)
+                ];
+            } else {
+                // 第二个人物的路径
+                path = [
+                    new THREE.Vector3(startX, offsetY, startZ),
+                    new THREE.Vector3(startX - 4, offsetY, startZ),
+                    new THREE.Vector3(startX - 4, offsetY, startZ - 4),
+                    new THREE.Vector3(startX, offsetY, startZ - 4),
+                    new THREE.Vector3(startX, offsetY, startZ)
+                ];
+            }
+            
+            // 创建动画
+            const playerAnimation = {
+                walkCycle: 0,
+                path: path,
+                currentPathIndex: 0,
+                speed: 0.006 + Math.random() * 0.004 // 随机速度，使人物移动更自然
+            };
+            
+            // 添加到数组
+            players.push(player);
+            playerAnimations.push(playerAnimation);
+            
+            return player;
+        }
+        
+        // 更新人物动画 - 优化动画计算
+        function updatePlayerAnimation(deltaTime) {
+            // 更新所有人物的动画
+            for (let i = 0; i < players.length; i++) {
+                const player = players[i];
+                const playerAnimation = playerAnimations[i];
+                
+                if (!playerAnimation || !isPlayerVisible(player)) continue; // 如果人物不可见，不更新动画
+                
+                const { path, currentPathIndex, speed } = playerAnimation;
+                const currentPos = player.position;
+                const targetPos = path[currentPathIndex];
+                
+                // 计算距离
+                const distance = currentPos.distanceTo(targetPos);
+                
+                if (distance > 0.1) {
+                    // 移动人物
+                    const direction = new THREE.Vector3().subVectors(targetPos, currentPos).normalize();
+                    player.position.addScaledVector(direction, speed * deltaTime * 60);
+                    
+                    // 旋转人物面向移动方向
+                    const angle = Math.atan2(direction.x, direction.z);
+                    player.rotation.y = angle;
+                    
+                    // 行走动画 - 减少计算频率
+                    if (Math.random() < 0.3) { // 只在30%的帧中更新动画
+                        playerAnimation.walkCycle += speed * deltaTime * 120;
+                        
+                        // 腿部动画
+                        const legAngle = Math.sin(playerAnimation.walkCycle) * 0.3;
+                        player.children[3].rotation.x = legAngle; // 左腿
+                        player.children[4].rotation.x = -legAngle; // 右腿
+                        
+                        // 手臂动画
+                        const armAngle = Math.sin(playerAnimation.walkCycle + Math.PI) * 0.2;
+                        player.children[5].rotation.x = armAngle; // 左臂
+                        player.children[6].rotation.x = -armAngle; // 右臂
+                    }
+                } else {
+                    // 切换到下一个路径点
+                    playerAnimation.currentPathIndex = (currentPathIndex + 1) % path.length;
+                }
+            }
+        }
+        
+        // 检查人物是否在相机视野内 - 优化视锥体计算
+        function isPlayerVisible(player) {
+            if (!player || !camera) return true;
+            
+            // 简化的可见性检查
+            const distance = camera.position.distanceTo(player.position);
+            return distance < 30; // 如果距离小于30，则认为可见
+        }
+        
+        // 窗口大小调整
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+        
+        // 动画循环 - 添加性能监控和优化
+        let lastFrameTime = 0;
+        let frameCount = 0;
+        let fps = 0;
+        let lastAnimationUpdate = 0;
+        
+        function animate(currentTime) {
+            requestAnimationFrame(animate);
+            
+            // 计算FPS
+            frameCount++;
+            if (currentTime - lastFrameTime > 1000) {
+                fps = Math.round(frameCount * 1000 / (currentTime - lastFrameTime));
+                lastFrameTime = currentTime;
+                frameCount = 0;
+                
+                // 更新FPS显示
+                const fpsElement = document.getElementById('fps-counter');
+                if (fpsElement) {
+                    fpsElement.textContent = `FPS: ${fps}`;
+                }
+            }
+            
+            // 更新控制器
+            controls.update();
+            
+            // 更新人物动画 - 减少更新频率
+            const deltaTime = clock.getDelta();
+            if (currentTime - lastAnimationUpdate > 16) { // 大约每16ms更新一次（60fps）
+                updatePlayerAnimation(deltaTime);
+                lastAnimationUpdate = currentTime;
+            }
+            
+            // 渲染场景
+            renderer.render(scene, camera);
+        }
+        
+        // 页面加载完成后初始化
+        window.addEventListener('load', init);
+    </script>
+</body>
+</html>
